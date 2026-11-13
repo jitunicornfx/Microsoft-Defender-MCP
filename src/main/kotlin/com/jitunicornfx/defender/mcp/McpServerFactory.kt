@@ -3,6 +3,14 @@ package com.jitunicornfx.defender.mcp
 import io.ktor.client.plugins.HttpRequestTimeoutException
 import io.modelcontextprotocol.kotlin.sdk.server.Server
 import io.modelcontextprotocol.kotlin.sdk.server.ServerOptions
+import io.modelcontextprotocol.kotlin.sdk.server.ServerSession
+import io.modelcontextprotocol.kotlin.sdk.types.LoggingLevel
+import io.modelcontextprotocol.kotlin.sdk.types.LoggingMessageNotification
+import io.modelcontextprotocol.kotlin.sdk.types.LoggingMessageNotificationParams
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.launch
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
 import io.modelcontextprotocol.kotlin.sdk.types.CallToolResult
 import io.modelcontextprotocol.kotlin.sdk.types.Implementation
 import io.modelcontextprotocol.kotlin.sdk.types.ServerCapabilities
@@ -12,7 +20,7 @@ import kotlinx.serialization.json.JsonObject
 import java.io.IOException
 
 const val SERVER_NAME = "microsoft-defender-mcp"
-const val SERVER_VERSION = "0.1.0"
+const val SERVER_VERSION = "0.2.0"
 
 /**
  * Process-wide pieces shared by every MCP session: one API client per tenant (its own token cache,
@@ -58,7 +66,13 @@ class DefenderRuntime(
 fun buildServer(runtime: DefenderRuntime): Server {
     val server = Server(
         Implementation(name = SERVER_NAME, version = SERVER_VERSION),
-        ServerOptions(capabilities = ServerCapabilities(tools = ServerCapabilities.Tools(listChanged = false))),
+        ServerOptions(
+            capabilities = ServerCapabilities(
+                tools = ServerCapabilities.Tools(listChanged = false),
+                // Required to push notifications/message to the client (the update notices).
+                logging = buildJsonObject { },
+            ),
+        ),
         instructions = SERVER_INSTRUCTIONS,
     )
     runtime.tools.forEach { spec ->
@@ -67,6 +81,82 @@ fun buildServer(runtime: DefenderRuntime): Server {
         }
     }
     return server
+}
+
+/** Logger name carried on update notifications, so clients can attribute or filter them. */
+const val UPDATE_LOGGER_NAME = "$SERVER_NAME.update"
+
+/**
+ * Give every session of this server the update notice once it is initialized. Used by `--http`, where
+ * the SDK creates sessions internally: [Server.onConnect] fires as connections arrive, and each
+ * newly seen session gets its [ServerSession.onInitialized] hook registered exactly once.
+ */
+fun Server.attachUpdateNotifier(scope: CoroutineScope, notify: suspend (ServerSession) -> Unit) {
+    val handled = java.util.Collections.synchronizedSet(mutableSetOf<String>())
+    onConnect {
+        sessions.values.forEach { session ->
+            if (handled.add(session.sessionId)) {
+                session.onInitialized { scope.launch { runCatching { notify(session) } } }
+            }
+        }
+    }
+}
+
+/**
+ * Tell [session] a newer release exists (only when one does). Best-effort: a client may not show
+ * it, so `defender_server_info` reports the same state on request. Every string is server-authored;
+ * the version passed [UpdateChecker]'s strict allow-list.
+ */
+suspend fun Server.notifyUpdateAvailable(session: ServerSession, result: UpdateChecker.Result) {
+    if (!result.updateAvailable) return
+    runCatching {
+        sendLoggingMessage(
+            session.sessionId,
+            LoggingMessageNotification(
+                LoggingMessageNotificationParams(
+                    level = LoggingLevel.Info,
+                    logger = UPDATE_LOGGER_NAME,
+                    data = buildJsonObject {
+                        put("message", JsonPrimitive(result.message()))
+                        put("current_version", JsonPrimitive(result.currentVersion))
+                        result.latestVersion?.let { put("latest_version", JsonPrimitive(it)) }
+                        put("release_url", JsonPrimitive(result.releaseUrl))
+                    },
+                ),
+            ),
+        )
+    }.onFailure { System.err.println("[defender-mcp] Update notification not delivered: ${it::class.simpleName}") }
+}
+
+/** Tell [session] how an automatic installation went. All text is fixed and server-authored. */
+suspend fun Server.notifyUpdateInstalled(session: ServerSession, outcome: UpdateInstaller.Outcome) {
+    val (level, message) = when (outcome) {
+        is UpdateInstaller.Outcome.Installed ->
+            LoggingLevel.Info to "Version ${outcome.version} has been installed. Restart the server to run it."
+        is UpdateInstaller.Outcome.Staged ->
+            LoggingLevel.Info to "Version ${outcome.version} has been downloaded and verified, and will be applied " +
+                "when this server exits. Restart the server to run it."
+        is UpdateInstaller.Outcome.Failed -> LoggingLevel.Warning to "Automatic update did not complete: ${outcome.reason}"
+        UpdateInstaller.Outcome.Skipped -> return
+    }
+    runCatching {
+        sendLoggingMessage(
+            session.sessionId,
+            LoggingMessageNotification(
+                LoggingMessageNotificationParams(
+                    level = level,
+                    logger = UPDATE_LOGGER_NAME,
+                    data = buildJsonObject {
+                        put("message", JsonPrimitive(message))
+                        put(
+                            "restart_required",
+                            JsonPrimitive(outcome is UpdateInstaller.Outcome.Installed || outcome is UpdateInstaller.Outcome.Staged),
+                        )
+                    },
+                ),
+            ),
+        )
+    }.onFailure { System.err.println("[defender-mcp] Install notification not delivered: ${it::class.simpleName}") }
 }
 
 /** Guidance the client may show the model at initialization. */

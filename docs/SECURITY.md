@@ -71,7 +71,23 @@ to read or change another tenant.
 | The hourly state-change budget is shared across tenants, so spreading actions over tenants does not raise the limit | `ActionGate` |
 | Server info lists tenant names, clouds and hosts, but never secrets or tenant IDs | `ToolRegistry.serverInfoTool` |
 
-### 6. `--http` transport
+### 6. Automatic updates
+
+Self-updating code is a supply-chain path, so it is constrained at every step:
+
+| Control | Where |
+|---|---|
+| The update client is separate and unauthenticated. Defender credentials and tokens are never sent to GitHub | `UpdateChecker`, `UpdateInstaller` |
+| Only the newest published, non-prerelease release is considered, and only a strictly newer version. A tag must match a strict version pattern, or it is ignored | `UpdateChecker` |
+| An asset is installed only if it carries GitHub's `sha256:` digest. The download is verified against that digest and against the published size | `UpdateChecker.parseAsset`, `UpdateInstaller` |
+| Downloads come only over HTTPS from GitHub hosts, matched by exact name. Redirects are followed manually and re-checked, up to a limit | `UpdateChecker.isAllowedDownloadUrl`, `UpdateInstaller.downloadTo` |
+| The downloaded JAR must contain this server's main class before it replaces anything. The old JAR is backed up and restored if a write fails | `UpdateInstaller` |
+| On Windows the verified file is staged and swapped at exit, but only if it still matches its digest, the target has not changed, and no other server is running from it | `UpdateInstaller.installStagedAtShutdown` |
+| Release text never reaches the model: notices are server-written and carry only the validated version | `notifyUpdateAvailable`, `UpdateStatus` |
+| The build fails if the advertised `SERVER_VERSION` drifts from the release version, which prevents reinstall loops | `verifyServerVersion` (Gradle) |
+| Operators can opt out of installing (`DEFENDER_DISABLE_AUTO_UPDATE`) or of the check entirely (`DEFENDER_DISABLE_UPDATE_CHECK`) | `Config` |
+
+### 7. `--http` transport
 
 - It binds to loopback by default. Off loopback it refuses to start without a bearer token of at least 32 characters.
 - Bearer tokens are compared in constant time. Each client address is throttled after repeated failures (429).

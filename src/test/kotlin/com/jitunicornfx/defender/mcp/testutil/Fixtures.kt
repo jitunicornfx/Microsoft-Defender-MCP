@@ -58,6 +58,9 @@ fun testConfig(
     confirmation = confirmation,
     maxResultChars = maxResultChars,
     maxActionsPerHour = maxActionsPerHour,
+    // Tests must never reach GitHub or rewrite a JAR.
+    updateCheckDisabled = true,
+    autoUpdateDisabled = true,
 )
 
 /** Canned HTTP response for the mock engine. */

@@ -53,7 +53,7 @@ are deliberately **not** included.
 ./gradlew shadowJar
 ```
 
-This writes `build/libs/microsoft-defender-mcp-0.1.0-all.jar`. `./gradlew check` runs the kotest suite and
+This writes `build/libs/microsoft-defender-mcp-0.2.0-all.jar`. `./gradlew check` runs the kotest suite and
 enforces the JaCoCo coverage gate (90% line, 80% branch). The HTML report is in `build/reports/jacoco/test/html`.
 
 ## Configure
@@ -77,6 +77,8 @@ Configuration comes from environment variables, so secrets never appear on a com
 | `DEFENDER_TOOLS` | all permitted | Comma-separated tool-name globs |
 | `DEFENDER_MCP_AUTH_TOKEN` | unset | Bearer token for `--http`. Required, and at least 32 characters, off loopback |
 | `DEFENDER_HTTP_ALLOWED_ORIGINS` | none | Browser origins allowed in `--http` mode |
+| `DEFENDER_DISABLE_AUTO_UPDATE` | off | `1` reports a newer release but never installs it |
+| `DEFENDER_DISABLE_UPDATE_CHECK` | off | `1` skips the release check entirely (no call to GitHub) |
 
 ### Multiple tenants
 
@@ -110,7 +112,7 @@ DEFENDER_CONTOSO_ACCESS_LEVEL=read-only
 Check the configuration (this acquires a Defender API token and a Microsoft Graph token per tenant, then exits):
 
 ```bash
-java -jar build/libs/microsoft-defender-mcp-0.1.0-all.jar --check
+java -jar build/libs/microsoft-defender-mcp-0.2.0-all.jar --check
 ```
 
 ## Run
@@ -126,6 +128,8 @@ Usage: microsoft-defender-mcp [<options>]
   --no-confirm                 Skip human approval (unattended automation only)
   --max-actions-per-hour INT
   --tools TEXT                 Tool-name glob(s), repeatable
+  --no-auto-update             Report new releases but never install them
+  --no-update-check            Never contact GitHub for releases
   --check                      Validate configuration and exit
 ```
 
@@ -136,7 +140,7 @@ Usage: microsoft-defender-mcp [<options>]
   "mcpServers": {
     "defender": {
       "command": "java",
-      "args": ["-jar", "C:/path/to/microsoft-defender-mcp-0.1.0-all.jar"],
+      "args": ["-jar", "C:/path/to/microsoft-defender-mcp-0.2.0-all.jar"],
       "env": {
         "DEFENDER_TENANT_ID": "…",
         "DEFENDER_CLIENT_ID": "…",
@@ -150,10 +154,23 @@ Usage: microsoft-defender-mcp [<options>]
 ### Streamable HTTP / SSE
 
 ```bash
-DEFENDER_MCP_AUTH_TOKEN=$(openssl rand -hex 32) java -jar microsoft-defender-mcp-0.1.0-all.jar --http --port 3074
+DEFENDER_MCP_AUTH_TOKEN=$(openssl rand -hex 32) java -jar microsoft-defender-mcp-0.2.0-all.jar --http --port 3074
 ```
 
 Streamable HTTP is served at `/mcp` and the legacy HTTP+SSE transport at `/sse`.
+
+## Automatic updates
+
+At startup the server checks this repository's latest GitHub release, in the background, so startup never waits on it.
+- **Installing:** when a newer release publishes `microsoft-defender-mcp-<version>-all.jar` with GitHub's SHA-256
+  digest, the server downloads it, verifies the digest and that it really is this server, and replaces the running JAR.
+  On Windows the running JAR is locked, so the verified file is staged and swapped in when the server exits.
+- **Restart:** the new version runs after the next restart. Your MCP client gets a notification, and
+  `defender_server_info` reports the update state under `update`.
+- **What it never does:** it never sends Defender credentials to GitHub, never downgrades, never installs prereleases,
+  and only downloads from GitHub's own hosts.
+- **Opting out:** `DEFENDER_DISABLE_AUTO_UPDATE=1` (or `--no-auto-update`) keeps the notice but never installs.
+  `DEFENDER_DISABLE_UPDATE_CHECK=1` (or `--no-update-check`) makes no GitHub call at all.
 
 ## Design notes
 

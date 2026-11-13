@@ -96,6 +96,7 @@ object ToolRegistry {
                 // The level the server can actually exercise (per-tenant narrowing applied).
                 "accessLevel" to JsonPrimitive(config.effectiveAccessLevel.name.lowercase()),
                 "humanApproval" to JsonPrimitive(config.confirmation.name.lowercase()),
+                "update" to updateInfo(UpdateStatus.active),
             ) + config.accessCapNotices().let { notices ->
                 // Startup warnings go to stderr, which most MCP clients never show; repeat them where they are seen.
                 if (notices.isEmpty()) emptyMap() else mapOf("accessWarnings" to JsonArray(notices.map(::JsonPrimitive)))

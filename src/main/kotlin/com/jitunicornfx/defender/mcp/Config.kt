@@ -178,6 +178,10 @@ data class Config(
     val defaultTenant: String? = null,
     /** True when tenants came from [ENV_TENANTS], so their settings live in `DEFENDER_<NAME>_*` variables. */
     val namedTenants: Boolean = false,
+    /** Skip the startup check for a newer GitHub release (implies [autoUpdateDisabled]). */
+    val updateCheckDisabled: Boolean = false,
+    /** Report a newer release but never download or install it. */
+    val autoUpdateDisabled: Boolean = false,
 ) {
     init {
         require(maxResultChars >= MIN_RESULT_CHARS) { "max result chars must be at least $MIN_RESULT_CHARS" }
@@ -254,11 +258,13 @@ data class Config(
             "maxResultChars=$maxResultChars, maxActionsPerHour=$maxActionsPerHour, " +
             "maxConcurrentRequests=$maxConcurrentRequests, httpAuthToken=${if (httpAuthToken == null) "unset" else "***"}, " +
             "httpAllowedOrigins=$httpAllowedOrigins, toolGlobs=$toolGlobs, tenants=${tenants.map { it.name }}, " +
-            "defaultTenant=${defaultTenant ?: "none"})"
+            "defaultTenant=${defaultTenant ?: "none"}, updateCheckDisabled=$updateCheckDisabled, autoUpdateDisabled=$autoUpdateDisabled)"
 
     val tokenUrl: String get() = "${cloud.loginBaseUrl}/${credentials.tenantId}/oauth2/v2.0/token"
 
     companion object {
+        const val ENV_DISABLE_UPDATE_CHECK = "DEFENDER_DISABLE_UPDATE_CHECK"
+        const val ENV_DISABLE_AUTO_UPDATE = "DEFENDER_DISABLE_AUTO_UPDATE"
         const val ENV_TENANTS = "DEFENDER_TENANTS"
         const val ENV_DEFAULT_TENANT = "DEFENDER_DEFAULT_TENANT"
         const val DEFAULT_TENANT_NAME = "default"
@@ -335,6 +341,17 @@ data class Config(
             else -> throw IllegalArgumentException("Unknown confirmation mode '$value'. Valid values: elicit, none.")
         }
 
+        /**
+         * A boolean switch: 1/true/yes/on or 0/false/no/off (any case), unset or blank meaning false.
+         * Anything else fails startup, so a typo never silently leaves a safety switch off.
+         */
+        internal fun parseFlag(name: String, value: String?): Boolean = when (value?.trim()?.lowercase()) {
+            null, "" -> false
+            "1", "true", "yes", "on" -> true
+            "0", "false", "no", "off" -> false
+            else -> throw IllegalArgumentException("$name must be 1/true/yes/on or 0/false/no/off.")
+        }
+
         private fun Map<String, String>.trimmed(key: String): String? = this[key]?.trim()?.takeIf { it.isNotEmpty() }
 
         private fun Map<String, String>.long(key: String, default: Long): Long =
@@ -373,6 +390,8 @@ data class Config(
                 additionalTenants = tenants.drop(1),
                 defaultTenant = env.trimmed(ENV_DEFAULT_TENANT)?.lowercase(),
                 namedTenants = env.trimmed(ENV_TENANTS) != null,
+                updateCheckDisabled = parseFlag(ENV_DISABLE_UPDATE_CHECK, env[ENV_DISABLE_UPDATE_CHECK]),
+                autoUpdateDisabled = parseFlag(ENV_DISABLE_AUTO_UPDATE, env[ENV_DISABLE_AUTO_UPDATE]),
             )
         }
 
