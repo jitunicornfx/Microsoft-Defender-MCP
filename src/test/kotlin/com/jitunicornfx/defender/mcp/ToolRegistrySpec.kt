@@ -8,11 +8,13 @@ import com.jitunicornfx.defender.mcp.testutil.failed
 import com.jitunicornfx.defender.mcp.testutil.mcpHarness
 import com.jitunicornfx.defender.mcp.testutil.testConfig
 import com.jitunicornfx.defender.mcp.testutil.text
+import com.jitunicornfx.defender.mcp.tools.AlertFileTools
 import com.jitunicornfx.defender.mcp.tools.HuntingTools
 import com.jitunicornfx.defender.mcp.tools.IndicatorTools
 import com.jitunicornfx.defender.mcp.tools.InvestigationTools
 import com.jitunicornfx.defender.mcp.tools.MachineTools
 import com.jitunicornfx.defender.mcp.tools.RemediationTools
+import com.jitunicornfx.defender.mcp.tools.ResponseTools
 import com.jitunicornfx.defender.mcp.tools.TriageTools
 import com.jitunicornfx.defender.mcp.tools.UserTools
 import io.kotest.core.spec.style.FunSpec
@@ -51,7 +53,7 @@ class ToolRegistrySpec : FunSpec({
         test("is the concatenation of every tool group, in a stable order") {
             names(tools) shouldContainExactly names(
                 HuntingTools.all + InvestigationTools.all + MachineTools.all + IndicatorTools.all +
-                    RemediationTools.all + UserTools.all + TriageTools.all,
+                    RemediationTools.all + UserTools.all + TriageTools.all + ResponseTools.all + AlertFileTools.all,
             )
         }
 
@@ -85,11 +87,17 @@ class ToolRegistrySpec : FunSpec({
                 "defender_get_machine_vulnerabilities", "defender_get_machine_recommendations", "defender_get_machine_missing_kbs",
                 "defender_get_domain_alerts", "defender_get_domain_machines", "defender_get_ip_alerts",
                 "defender_get_remediation_task_machines", "defender_get_user_alerts", "defender_get_user_machines",
+                "defender_list_alerts", "defender_get_device_av_health",
             )
+            // Cursor-only collections: they take top and page_token but expose no OData skip parameter.
+            val topWithoutSkip = setOf("defender_get_device_av_health")
             names(tools.filter { "page_token" in it.argNames }) shouldContainExactlyInAnyOrder paged
             tools.forEach { spec ->
                 ("page_token" in spec.argNames) shouldBe ("max_pages" in spec.argNames)
-                if ("top" in spec.argNames) spec.argNames shouldContainAll listOf("skip", "page_token", "max_pages")
+                if ("top" in spec.argNames) {
+                    spec.argNames shouldContainAll listOf("page_token", "max_pages")
+                    if (spec.name !in topWithoutSkip) spec.argNames shouldContain "skip"
+                }
                 if ("page_token" in spec.argNames) {
                     spec.access shouldBe AccessLevel.READ_ONLY
                     val token = spec.definition().inputSchema.properties!!["page_token"]!!.jsonObject

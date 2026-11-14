@@ -20,7 +20,7 @@ import kotlinx.serialization.json.JsonObject
 import java.io.IOException
 
 const val SERVER_NAME = "microsoft-defender-mcp"
-const val SERVER_VERSION = "0.2.0"
+const val SERVER_VERSION = "0.3.0"
 
 /**
  * Process-wide pieces shared by every MCP session: one API client per tenant (its own token cache,
@@ -33,7 +33,11 @@ const val SERVER_VERSION = "0.2.0"
 class DefenderRuntime(
     val config: Config,
     client: DefenderClient? = null,
-    val gate: ActionGate = ActionGate(config.confirmation, ActionBudget(config.maxActionsPerHour)),
+    val gate: ActionGate = ActionGate(
+        config.confirmation,
+        ActionBudget(config.maxActionsPerHour),
+        containmentBudget = ActionBudget(config.maxContainmentsPerHour),
+    ),
     clientFactory: (Config) -> DefenderClient = { DefenderClient(it) },
 ) : AutoCloseable {
     private val renderer = ResponseRenderer(config.maxResultChars)

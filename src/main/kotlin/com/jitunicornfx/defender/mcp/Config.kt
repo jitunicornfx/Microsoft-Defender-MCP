@@ -178,6 +178,13 @@ data class Config(
     val defaultTenant: String? = null,
     /** True when tenants came from [ENV_TENANTS], so their settings live in `DEFENDER_<NAME>_*` variables. */
     val namedTenants: Boolean = false,
+    /**
+     * Containment actions (isolate, restrict app execution, stop-and-quarantine) permitted per rolling
+     * hour, on top of [maxActionsPerHour]: a tighter brake on the actions that take devices or users offline.
+     */
+    val maxContainmentsPerHour: Int = DEFAULT_MAX_CONTAINMENTS_PER_HOUR,
+    /** Machine tags (case-insensitive) whose devices containment actions must never touch, e.g. Tier0. */
+    val protectedTags: Set<String> = emptySet(),
     /** Skip the startup check for a newer GitHub release (implies [autoUpdateDisabled]). */
     val updateCheckDisabled: Boolean = false,
     /** Report a newer release but never download or install it. */
@@ -189,6 +196,7 @@ data class Config(
         require(requestTimeoutMillis in 1_000..600_000) { "timeout must be between 1000 and 600000 ms" }
         require(maxActionsPerHour in 0..10_000) { "max actions per hour must be between 0 and 10000" }
         require(maxConcurrentRequests in 1..64) { "max concurrent requests must be between 1 and 64" }
+        require(maxContainmentsPerHour in 0..1_000) { "max containments per hour must be between 0 and 1000" }
         require(region == null || cloud == CloudEnvironment.COMMERCIAL) {
             "$ENV_REGION applies only to the commercial cloud; ${cloud.code} has its own fixed API host."
         }
@@ -220,6 +228,12 @@ data class Config(
         additionalTenants = emptyList(),
         defaultTenant = null,
     )
+
+    /** [protectedTags] trimmed and lowercased, whatever way the Config was built. */
+    val normalizedProtectedTags: Set<String> get() = protectedTags.map { it.trim().lowercase() }.filter { it.isNotEmpty() }.toSet()
+
+    /** True when [tag] is a protected tag (case- and whitespace-insensitive). */
+    fun isProtectedTag(tag: String): Boolean = tag.trim().lowercase() in normalizedProtectedTags
 
     /** The widest access level any tenant actually has: what the server can really do. */
     val effectiveAccessLevel: AccessLevel get() = tenants.maxOf { accessFor(it) }
@@ -258,11 +272,14 @@ data class Config(
             "maxResultChars=$maxResultChars, maxActionsPerHour=$maxActionsPerHour, " +
             "maxConcurrentRequests=$maxConcurrentRequests, httpAuthToken=${if (httpAuthToken == null) "unset" else "***"}, " +
             "httpAllowedOrigins=$httpAllowedOrigins, toolGlobs=$toolGlobs, tenants=${tenants.map { it.name }}, " +
-            "defaultTenant=${defaultTenant ?: "none"}, updateCheckDisabled=$updateCheckDisabled, autoUpdateDisabled=$autoUpdateDisabled)"
+            "defaultTenant=${defaultTenant ?: "none"}, maxContainmentsPerHour=$maxContainmentsPerHour, protectedTags=$protectedTags, updateCheckDisabled=$updateCheckDisabled, autoUpdateDisabled=$autoUpdateDisabled)"
 
     val tokenUrl: String get() = "${cloud.loginBaseUrl}/${credentials.tenantId}/oauth2/v2.0/token"
 
     companion object {
+        const val ENV_MAX_CONTAINMENTS_PER_HOUR = "DEFENDER_MAX_CONTAINMENTS_PER_HOUR"
+        const val ENV_PROTECTED_TAGS = "DEFENDER_PROTECTED_TAGS"
+        const val DEFAULT_MAX_CONTAINMENTS_PER_HOUR = 5
         const val ENV_DISABLE_UPDATE_CHECK = "DEFENDER_DISABLE_UPDATE_CHECK"
         const val ENV_DISABLE_AUTO_UPDATE = "DEFENDER_DISABLE_AUTO_UPDATE"
         const val ENV_TENANTS = "DEFENDER_TENANTS"
@@ -390,6 +407,8 @@ data class Config(
                 additionalTenants = tenants.drop(1),
                 defaultTenant = env.trimmed(ENV_DEFAULT_TENANT)?.lowercase(),
                 namedTenants = env.trimmed(ENV_TENANTS) != null,
+                maxContainmentsPerHour = env.int(ENV_MAX_CONTAINMENTS_PER_HOUR, DEFAULT_MAX_CONTAINMENTS_PER_HOUR),
+                protectedTags = csv(env[ENV_PROTECTED_TAGS]).map { it.lowercase() }.toSet(),
                 updateCheckDisabled = parseFlag(ENV_DISABLE_UPDATE_CHECK, env[ENV_DISABLE_UPDATE_CHECK]),
                 autoUpdateDisabled = parseFlag(ENV_DISABLE_AUTO_UPDATE, env[ENV_DISABLE_AUTO_UPDATE]),
             )

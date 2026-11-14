@@ -24,11 +24,28 @@ from a human through the MCP client. All Defender data comes back fenced as untr
 | | `defender_tag_machines_bulk`, `defender_update_machine` (replaces the tag set) | destructive + approval |
 | Remediation activity | `defender_list_remediation_tasks`, `defender_get_remediation_task`, `defender_get_remediation_task_machines` | read |
 | Users | `defender_get_user_alerts`, `defender_get_user_machines` | read |
+| Alerts | `defender_list_alerts`, `defender_get_alert`, `defender_get_alert_entities` | read |
+| Files | `defender_get_file`, `defender_get_file_stats` | read |
+| Antivirus health | `defender_get_device_av_health` | read |
+| Response actions | `defender_unisolate_machine`, `defender_unrestrict_app_execution`, `defender_run_av_scan`, `defender_cancel_machine_action` | write + approval |
+| | `defender_isolate_machine`, `defender_restrict_app_execution`, `defender_stop_and_quarantine_file` | destructive + approval + containment budget |
 | Composite (concurrent) | `defender_machine_triage`, `defender_indicator_lookup` | read |
 | Meta | `defender_server_info` | read |
 
-Machine-action response tools (isolate, restrict app execution, offboard, quarantine, live response)
-are deliberately **not** included.
+**Containment actions** (isolate, restrict app execution, stop-and-quarantine) take extra precautions:
+- They need a comment of at least 10 characters, e.g. an alert or ticket reference.
+- They count against a separate hourly containment budget (default 5).
+- They refuse devices carrying a tag listed in `DEFENDER_PROTECTED_TAGS`. The server also never removes a protected
+  tag, not even by replacing a device's tag set, so one routine-looking approval can't re-enable containment. Use
+  **portal-assigned** tags for this: Defender also reports registry-based tags set on the device itself, so an
+  attacker with local admin rights could tag a device to opt it out. Every such refusal is audited
+  (`refused_protected_tag`), so a SOC can spot devices that tagged themselves.
+- They first look the device up (and, for quarantine, the file), and show the approver what Defender reports. If that
+  lookup fails, nothing is done.
+
+The reversals (unisolate, unrestrict) sit at the lower write tier, so undoing containment never needs the destructive
+level. Offboarding and live response are deliberately **not** included. See
+[docs/API_GAP_ANALYSIS.md](docs/API_GAP_ANALYSIS.md) for the remaining gaps and the plan.
 
 ## Prerequisites
 
@@ -41,6 +58,8 @@ are deliberately **not** included.
 | `ThreatHunting.Read.All` (on **Microsoft Graph**, not WindowsDefenderATP) | advanced hunting |
 | `Machine.Read.All` | machine reads, machine actions |
 | `Machine.ReadWrite.All` | tagging, device value, update machine |
+| `Machine.Isolate`, `Machine.RestrictExecution`, `Machine.Scan`, `Machine.StopAndQuarantine` | isolate/unisolate, restrict/unrestrict, AV scan, stop and quarantine (cancel needs the permission of the action it cancels) |
+| `File.Read.All` | file information and statistics |
 | `Machine.CollectForensics` | collect investigation package |
 | `Alert.Read.All` / `Alert.ReadWrite.All` | domain/IP/user/machine alerts, investigations (start needs ReadWrite) |
 | `User.Read.All` | user tools |
@@ -53,7 +72,7 @@ are deliberately **not** included.
 ./gradlew shadowJar
 ```
 
-This writes `build/libs/microsoft-defender-mcp-0.2.0-all.jar`. `./gradlew check` runs the kotest suite and
+This writes `build/libs/microsoft-defender-mcp-0.3.0-all.jar`. `./gradlew check` runs the kotest suite and
 enforces the JaCoCo coverage gate (90% line, 80% branch). The HTML report is in `build/reports/jacoco/test/html`.
 
 ## Configure
@@ -70,6 +89,8 @@ Configuration comes from environment variables, so secrets never appear on a com
 | `DEFENDER_ACCESS_LEVEL` | `read-only` | `read-only`, `write`, `destructive` |
 | `DEFENDER_CONFIRMATION` | `elicit` | `elicit` (a human approves each state change) or `none` |
 | `DEFENDER_MAX_ACTIONS_PER_HOUR` | `20` | State-changing calls allowed per rolling hour |
+| `DEFENDER_MAX_CONTAINMENTS_PER_HOUR` | `5` | Isolations, restrictions and quarantines allowed per rolling hour (within the action budget) |
+| `DEFENDER_PROTECTED_TAGS` | none | Comma-separated machine tags (e.g. `Tier0,DomainController`) whose devices containment actions refuse |
 | `DEFENDER_MAX_CONCURRENT_REQUESTS` | `4` | Concurrent outbound API calls |
 | `DEFENDER_TIMEOUT_MS` | `60000` | Per-request timeout |
 | `DEFENDER_MAX_RESPONSE_BYTES` | `16777216` | Bytes read from one response (memory guard) |
@@ -112,7 +133,7 @@ DEFENDER_CONTOSO_ACCESS_LEVEL=read-only
 Check the configuration (this acquires a Defender API token and a Microsoft Graph token per tenant, then exits):
 
 ```bash
-java -jar build/libs/microsoft-defender-mcp-0.2.0-all.jar --check
+java -jar build/libs/microsoft-defender-mcp-0.3.0-all.jar --check
 ```
 
 ## Run
@@ -140,7 +161,7 @@ Usage: microsoft-defender-mcp [<options>]
   "mcpServers": {
     "defender": {
       "command": "java",
-      "args": ["-jar", "C:/path/to/microsoft-defender-mcp-0.2.0-all.jar"],
+      "args": ["-jar", "C:/path/to/microsoft-defender-mcp-0.3.0-all.jar"],
       "env": {
         "DEFENDER_TENANT_ID": "…",
         "DEFENDER_CLIENT_ID": "…",
@@ -154,7 +175,7 @@ Usage: microsoft-defender-mcp [<options>]
 ### Streamable HTTP / SSE
 
 ```bash
-DEFENDER_MCP_AUTH_TOKEN=$(openssl rand -hex 32) java -jar microsoft-defender-mcp-0.2.0-all.jar --http --port 3074
+DEFENDER_MCP_AUTH_TOKEN=$(openssl rand -hex 32) java -jar microsoft-defender-mcp-0.3.0-all.jar --http --port 3074
 ```
 
 Streamable HTTP is served at `/mcp` and the legacy HTTP+SSE transport at `/sse`.

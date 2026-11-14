@@ -31,7 +31,13 @@ Examples are a process command line, a scheduled-task name or a device name.
 | The approval prompt labels AI-supplied values (such as comments) as AI-supplied, with invisible characters removed | `ActionGate.approvalMessage` |
 | **Action budget**: at most N state changes per rolling hour (default 20). The server refuses rather than queues, because a burst is the signature of a hijacked loop | `ActionBudget` |
 | **Audit log**: every decision (approved, declined, unsupported, over budget) is written to stderr as one JSON line | `ActionGate.record` |
-| High-impact response actions (isolate, offboard, quarantine, live response) are not implemented at all | — |
+| **Containment actions** (isolate, restrict app execution, stop-and-quarantine) are destructive-tier. On top of the action budget they draw on a separate **containment budget** (default 5 per hour), which also caps how many devices can be taken offline | `ActionGate` |
+| Before a containment action, the server looks up the device (and, for quarantine, the file) and shows the approver what Defender reports, separately from the AI-supplied values. **If that lookup fails, nothing is done** | `ResponseTools.machinePreview`, `filePreview` |
+| Devices carrying a tag in `DEFENDER_PROTECTED_TAGS` are never contained by this server, and the server never removes a protected tag (directly, in bulk, or by replacing the tag set). Every refusal is audited. Use portal-assigned tags: registry-based device tags can be set by an attacker on the endpoint | `ResponseTools`, `MachineTools` |
+| Containment needs a substantive comment. Files signed by Microsoft (matched against exact signer names with a valid certificate) are never quarantined | `ResponseTools` |
+| The audit line for each decision records the Defender facts the approver was shown, and whether the action was containment | `ActionGate` |
+| Undoing containment (unisolate, unrestrict) sits at the lower write tier, so recovery is never locked behind the destructive level. It still needs approval, because an attacker could try to release a contained device | `ResponseTools` |
+| Offboarding and live response (running scripts on endpoints) are not implemented at all | — |
 | Tool globs can only narrow the tool set. They can never expose a tool above the access level | `ToolRegistry.select` |
 
 ### 3. Malicious tool arguments

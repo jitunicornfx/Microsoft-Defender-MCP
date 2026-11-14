@@ -357,11 +357,18 @@ class ToolCall(
      * Ask the [ActionGate] for permission to perform [summary]; null when approved, otherwise the
      * refusal to return. [details] are shown to the human approver as labelled lines.
      */
-    suspend fun authorize(summary: String, details: List<Pair<String, String>>): CallToolResult? =
+    suspend fun authorize(
+        summary: String,
+        details: List<Pair<String, String>>,
+        facts: List<Pair<String, String>> = emptyList(),
+        containment: Boolean = false,
+    ): CallToolResult? =
         if (ctx.isMultiTenant) {
             // The tenant goes in the summary as well as the details, so the human sees which organisation is affected.
-            ctx.gate.authorize(spec.name, "$summary in tenant '${tenant.name}'", listOf("Tenant" to tenant.name) + details, approver)
+            ctx.gate.authorize(
+                spec.name, "$summary in tenant '${tenant.name}'", listOf("Tenant" to tenant.name) + details, approver, facts, containment,
+            )
         } else {
-            ctx.gate.authorize(spec.name, summary, details, approver)
+            ctx.gate.authorize(spec.name, summary, details, approver, facts, containment)
         }
 }

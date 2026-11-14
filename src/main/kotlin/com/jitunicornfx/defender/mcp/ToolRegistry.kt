@@ -1,10 +1,12 @@
 package com.jitunicornfx.defender.mcp
 
+import com.jitunicornfx.defender.mcp.tools.AlertFileTools
 import com.jitunicornfx.defender.mcp.tools.HuntingTools
 import com.jitunicornfx.defender.mcp.tools.IndicatorTools
 import com.jitunicornfx.defender.mcp.tools.InvestigationTools
 import com.jitunicornfx.defender.mcp.tools.MachineTools
 import com.jitunicornfx.defender.mcp.tools.RemediationTools
+import com.jitunicornfx.defender.mcp.tools.ResponseTools
 import com.jitunicornfx.defender.mcp.tools.TriageTools
 import com.jitunicornfx.defender.mcp.tools.UserTools
 import kotlinx.serialization.json.JsonArray
@@ -20,7 +22,7 @@ object ToolRegistry {
     /** Every API tool, in a stable order. */
     val apiTools: List<ToolSpec> by lazy {
         HuntingTools.all + InvestigationTools.all + MachineTools.all + IndicatorTools.all +
-            RemediationTools.all + UserTools.all + TriageTools.all
+            RemediationTools.all + UserTools.all + TriageTools.all + ResponseTools.all + AlertFileTools.all
     }
 
     /** Translate a `*`/`?` glob into an anchored, case-insensitive regex. */

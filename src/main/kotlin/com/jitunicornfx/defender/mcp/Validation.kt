@@ -84,6 +84,15 @@ object Validators {
         return v.lowercase()
     }
 
+    private val SHA256 = Regex("^[0-9a-fA-F]{64}$")
+
+    /** A file identifier the Files API accepts: SHA-1 (40 hex) or SHA-256 (64 hex). Returned lowercased. */
+    fun fileHash(value: String, field: String = "file_hash"): String {
+        val v = value.trim()
+        require(SHA1.matches(v) || SHA256.matches(v)) { "$field must be a SHA-1 (40 hex) or SHA-256 (64 hex) file hash." }
+        return v.lowercase()
+    }
+
     /** True for a syntactically valid DNS host name (no trailing dot, 1-253 characters). */
     fun isHostName(value: String): Boolean {
         if (value.isEmpty() || value.length > 253) return false

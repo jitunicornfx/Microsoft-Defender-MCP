@@ -6,7 +6,12 @@ import com.jitunicornfx.defender.mcp.ToolSpec
 import com.jitunicornfx.defender.mcp.Validators
 import com.jitunicornfx.defender.mcp.tool
 import io.ktor.http.HttpMethod
+import com.jitunicornfx.defender.mcp.ToolCall
+import com.jitunicornfx.defender.mcp.errorResult
+import io.modelcontextprotocol.kotlin.sdk.types.CallToolResult
 import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.JsonPrimitive
 import java.time.Duration
 import java.time.format.DateTimeFormatter
@@ -152,6 +157,7 @@ object MachineTools {
         val id = Validators.machineId(args.string("machine_id"))
         val tag = Validators.tag(args.string("tag"))
         val action = args.enum("action", TAG_ACTIONS)
+        refuseProtectedTagRemoval(action, tag)?.let { return@tool it }
         authorize("$action tag on device $id", listOf("Device ID" to id, "Tag" to tag))?.let { return@tool it }
         render(client.request(HttpMethod.Post, "/api/machines/${seg(id)}/tags", body = jsonOf("Value" to tag, "Action" to action)))
     }
@@ -174,6 +180,7 @@ object MachineTools {
         require(ids.isNotEmpty()) { "machine_ids must list at least one device." }
         val tag = Validators.tag(args.string("tag"))
         val action = args.enum("action", TAG_ACTIONS)
+        refuseProtectedTagRemoval(action, tag)?.let { return@tool it }
         authorize(
             "$action tag on ${ids.size} device(s)",
             listOf("Tag" to tag, "Devices" to ids.take(5).joinToString(", ") + if (ids.size > 5) " (+${ids.size - 5} more)" else ""),
@@ -222,6 +229,15 @@ object MachineTools {
         val tags = args.optStringList("machine_tags", 100)?.map { Validators.tag(it, "machine_tags") }?.distinct()
         val value = args.optEnum("device_value", DEVICE_VALUES)
         require(tags != null || value != null) { "Provide machine_tags and/or device_value." }
+        if (tags != null && ctx.config.normalizedProtectedTags.isNotEmpty()) {
+            // machine_tags REPLACES the tag set: refuse a set that would drop a protected tag the device carries.
+            val current = currentTags(id) ?: return@tool errorResult(
+                "Refused: protected tags are configured and the device's current tags could not be read, so replacing its tag " +
+                    "set might remove one. Nothing was changed.",
+            )
+            val dropped = current.filter { ctx.config.isProtectedTag(it) && tags.none { t -> t.trim().equals(it.trim(), ignoreCase = true) } }
+            if (dropped.isNotEmpty()) return@tool protectedTagRefusal()
+        }
         authorize(
             "Update device $id" + (tags?.let { " (replace all tags with ${it.size} tag(s))" } ?: "") + (value?.let { " (device value $it)" } ?: ""),
             buildList {
@@ -245,7 +261,12 @@ object MachineTools {
         params = {
             string("machine_id", "Only actions on this device.", pattern = Patterns.MACHINE_ID)
             string("status", "Action status, e.g. Pending, InProgress, Succeeded, Failed, Cancelled.", pattern = Patterns.STATE_NAME)
-            string("type", "Action type, e.g. CollectInvestigationPackage, Isolate, RunAntiVirusScan.", pattern = Patterns.STATE_NAME)
+            string(
+                "type",
+                "Action type: Isolate, Unisolate, RestrictCodeExecution, UnrestrictCodeExecution, RunAntiVirusScan, " +
+                    "StopAndQuarantineFile, CollectInvestigationPackage, Offboard, LiveResponse.",
+                pattern = Patterns.STATE_NAME,
+            )
             paging(ACTION_FILTER_FIELDS)
         },
     ) {
@@ -265,6 +286,30 @@ object MachineTools {
     ) {
         val id = Validators.guid(args.string("action_id"), "action_id")
         getAndRender("/api/machineactions/${seg(id)}")
+    }
+
+    /**
+     * Protected tags (DEFENDER_PROTECTED_TAGS) shield devices from containment, so removing one would silently
+     * re-enable it. This server never removes them; a human does that in the Defender portal.
+     */
+    private fun ToolCall.refuseProtectedTagRemoval(action: String, tag: String): CallToolResult? =
+        if (action == "Remove" && ctx.config.isProtectedTag(tag)) protectedTagRefusal() else null
+
+    private fun ToolCall.protectedTagRefusal(): CallToolResult {
+        ctx.gate.recordRefusal(spec.name, "refused_protected_tag_removal", "Removal of a protected tag refused", emptyList())
+        return errorResult(
+            "Refused: that tag is listed in ${com.jitunicornfx.defender.mcp.Config.ENV_PROTECTED_TAGS} and protects devices from " +
+                "containment actions. This server never removes protected tags; a human can do so in the Defender portal. Nothing was changed.",
+        )
+    }
+
+    /** The device's current machine tags, or null when they cannot be read. */
+    private suspend fun ToolCall.currentTags(id: String): List<String>? {
+        val response = client.get("/api/machines/${seg(id)}")
+        if (!response.ok) return null
+        val machine = runCatching { com.jitunicornfx.defender.mcp.JsonCodec.compact.parseToJsonElement(response.text) as? JsonObject }.getOrNull()
+            ?: return null
+        return (machine["machineTags"] as? JsonArray)?.mapNotNull { (it as? JsonPrimitive)?.contentOrNull } ?: emptyList()
     }
 
     val all: List<ToolSpec> = listOf(

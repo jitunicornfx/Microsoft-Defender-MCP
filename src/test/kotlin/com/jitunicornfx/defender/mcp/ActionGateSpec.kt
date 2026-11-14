@@ -63,7 +63,7 @@ private fun gate(
     mode: ConfirmationMode = ConfirmationMode.ELICIT,
     limit: Int = 5,
     audit: AuditSink = ListAudit(),
-) = ActionGate(mode, ActionBudget(limit), audit) { FIXED_NOW }
+) = ActionGate(mode, ActionBudget(limit), audit, now = { FIXED_NOW })
 
 private val DETAILS = listOf("machine" to MACHINE_ID, "comment" to "please isolate")
 
@@ -187,7 +187,7 @@ class ActionGateSpec : FunSpec({
             val audit = ListAudit()
             val g = gate(limit = 1, audit = audit)
             shouldThrow<CancellationException> {
-                g.authorize("t", "s", DETAILS) { throw CancellationException("client went away") }
+                g.authorize("t", "s", DETAILS, approver = Approver { throw CancellationException("client went away") })
             }
             g.budgetUsed shouldBe 0
             audit.lines.shouldBeEmpty()
