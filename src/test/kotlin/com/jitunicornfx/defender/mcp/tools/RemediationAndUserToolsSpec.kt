@@ -25,7 +25,7 @@ import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.string.shouldNotContain
 import io.kotest.property.Arb
 import io.kotest.property.arbitrary.string
-import io.kotest.property.arbitrary.stringPattern
+import io.kotest.property.arbitrary.pattern
 import io.kotest.property.checkAll
 import io.ktor.http.HttpMethod
 import kotlinx.serialization.json.JsonArray
@@ -129,7 +129,7 @@ class RemediationAndUserToolsSpec : FunSpec({
         }
 
         test("property: task IDs of the allowed alphabet always reach the expected path") {
-            checkAll(50, Arb.stringPattern("[A-Za-z0-9-]{1,64}")) { id ->
+            checkAll(50, Arb.pattern("[A-Za-z0-9-]{1,64}")) { id ->
                 val h = remHarness()
                 h.call(RemediationTools.getTask, "task_id" to id).failed shouldBe false
                 h.fake.last.path shouldBe "/api/remediationTasks/$id"
@@ -211,13 +211,13 @@ class RemediationAndUserToolsSpec : FunSpec({
         }
 
         test("Patterns mirror the validators") {
-            checkAll(100, Arb.stringPattern("[0-9a-fA-Fg]{39,41}")) { s ->
+            checkAll(100, Arb.pattern("[0-9a-fA-Fg]{39,41}")) { s ->
                 Regex(Patterns.MACHINE_ID).matches(s) shouldBe runCatching { Validators.machineId(s) }.isSuccess
             }
-            checkAll(100, Arb.stringPattern("[0-9a-f]{8}-[0-9a-fz]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{11,12}")) { s ->
+            checkAll(100, Arb.pattern("[0-9a-f]{8}-[0-9a-fz]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{11,12}")) { s ->
                 Regex(Patterns.GUID).matches(s) shouldBe runCatching { Validators.guid(s, "g") }.isSuccess
             }
-            checkAll(100, Arb.stringPattern("[A-Za-z0-9_.-]{0,130}")) { s ->
+            checkAll(100, Arb.pattern("[A-Za-z0-9_.-]{0,130}")) { s ->
                 Regex(Patterns.OPAQUE_ID).matches(s) shouldBe runCatching { Validators.opaqueId(s, "o") }.isSuccess
             }
         }

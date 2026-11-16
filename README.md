@@ -16,7 +16,8 @@ from a human through the MCP client. All Defender data comes back fenced as untr
 | Advanced hunting (via Microsoft Graph `runHuntingQuery`) | `defender_run_advanced_query` | read |
 | Automated investigations | `defender_list_investigations`, `defender_get_investigation` | read |
 | | `defender_start_investigation` | write + approval |
-| | `defender_collect_investigation_package`, `defender_get_investigation_package_uri` | destructive + approval |
+| | `defender_get_investigation_package_uri` (reads only, but returns a download credential) | write + approval |
+| | `defender_collect_investigation_package` | destructive + approval |
 | Domain-related alerts | `defender_get_domain_alerts`, `defender_get_domain_machines`, `defender_get_domain_stats` | read |
 | IP-related alerts | `defender_get_ip_alerts`, `defender_get_ip_stats` | read |
 | Machines | `defender_list_machines`, `defender_get_machine`, `defender_get_machine_logon_users`, `defender_get_machine_alerts`, `defender_get_machine_software`, `defender_get_machine_vulnerabilities`, `defender_get_machine_recommendations`, `defender_get_machine_missing_kbs`, `defender_find_machines_by_ip`, `defender_find_machines_by_tag`, `defender_list_machine_actions`, `defender_get_machine_action` | read |
@@ -27,6 +28,11 @@ from a human through the MCP client. All Defender data comes back fenced as untr
 | Alerts | `defender_list_alerts`, `defender_get_alert`, `defender_get_alert_entities` | read |
 | Files | `defender_get_file`, `defender_get_file_stats` | read |
 | Antivirus health | `defender_get_device_av_health` | read |
+| Custom indicators (IoCs) | `defender_list_indicators` | read |
+| | `defender_submit_indicator`: Audit/Warn at write; Block, BlockAndRemediate and Allowed need destructive | write/destructive + approval |
+| | `defender_delete_indicator` | destructive + approval |
+| File samples | `defender_get_collected_file_link` (reads only, but returns a download credential) | write + approval |
+| | `defender_collect_file` (live response `GetFile` only, no scripts) | destructive + approval |
 | Response actions | `defender_unisolate_machine`, `defender_unrestrict_app_execution`, `defender_run_av_scan`, `defender_cancel_machine_action` | write + approval |
 | | `defender_isolate_machine`, `defender_restrict_app_execution`, `defender_stop_and_quarantine_file` | destructive + approval + containment budget |
 | Composite (concurrent) | `defender_machine_triage`, `defender_indicator_lookup` | read |
@@ -44,7 +50,21 @@ from a human through the MCP client. All Defender data comes back fenced as untr
   lookup fails, nothing is done.
 
 The reversals (unisolate, unrestrict) sit at the lower write tier, so undoing containment never needs the destructive
-level. Offboarding and live response are deliberately **not** included. See
+level.
+
+**Custom indicators:**
+- An expiration is required, at most 365 days ahead.
+- Microsoft's per-type action rules are enforced, and retired actions are refused.
+- CIDR, ranges and wildcards are refused.
+- Domains Windows, Defender and Microsoft 365 depend on can't be blocked; a domain indicator also matches every subdomain.
+- Before submitting, the server looks for an existing indicator, so the approver sees whether it creates a new one or
+  overwrites an old one.
+
+**File collection:**
+- It uses live response `GetFile` only; the server never pushes files or runs scripts.
+- Credential stores are refused: registry hives, `NTDS.dit`, LSASS dumps, shadow files, SSH keys and key files.
+
+Offboarding and the rest of live response are deliberately **not** included. See
 [docs/API_GAP_ANALYSIS.md](docs/API_GAP_ANALYSIS.md) for the remaining gaps and the plan.
 
 ## Prerequisites
@@ -60,6 +80,8 @@ level. Offboarding and live response are deliberately **not** included. See
 | `Machine.ReadWrite.All` | tagging, device value, update machine |
 | `Machine.Isolate`, `Machine.RestrictExecution`, `Machine.Scan`, `Machine.StopAndQuarantine` | isolate/unisolate, restrict/unrestrict, AV scan, stop and quarantine (cancel needs the permission of the action it cancels) |
 | `File.Read.All` | file information and statistics |
+| `Ti.ReadWrite.All` | custom indicators (Defender has no read-only indicator permission, so even listing needs it; the server's access level is what keeps it read-only) |
+| `Machine.LiveResponse`, `Machine.ReadWrite.All` | file collection and its download link. The device group also needs an automated remediation level |
 | `Machine.CollectForensics` | collect investigation package |
 | `Alert.Read.All` / `Alert.ReadWrite.All` | domain/IP/user/machine alerts, investigations (start needs ReadWrite) |
 | `User.Read.All` | user tools |
@@ -72,7 +94,7 @@ level. Offboarding and live response are deliberately **not** included. See
 ./gradlew shadowJar
 ```
 
-This writes `build/libs/microsoft-defender-mcp-0.3.0-all.jar`. `./gradlew check` runs the kotest suite and
+This writes `build/libs/microsoft-defender-mcp-0.4.0-all.jar`. `./gradlew check` runs the kotest suite and
 enforces the JaCoCo coverage gate (90% line, 80% branch). The HTML report is in `build/reports/jacoco/test/html`.
 
 ## Configure
@@ -133,7 +155,7 @@ DEFENDER_CONTOSO_ACCESS_LEVEL=read-only
 Check the configuration (this acquires a Defender API token and a Microsoft Graph token per tenant, then exits):
 
 ```bash
-java -jar build/libs/microsoft-defender-mcp-0.3.0-all.jar --check
+java -jar build/libs/microsoft-defender-mcp-0.4.0-all.jar --check
 ```
 
 ## Run
@@ -161,7 +183,7 @@ Usage: microsoft-defender-mcp [<options>]
   "mcpServers": {
     "defender": {
       "command": "java",
-      "args": ["-jar", "C:/path/to/microsoft-defender-mcp-0.3.0-all.jar"],
+      "args": ["-jar", "C:/path/to/microsoft-defender-mcp-0.4.0-all.jar"],
       "env": {
         "DEFENDER_TENANT_ID": "…",
         "DEFENDER_CLIENT_ID": "…",
@@ -175,7 +197,7 @@ Usage: microsoft-defender-mcp [<options>]
 ### Streamable HTTP / SSE
 
 ```bash
-DEFENDER_MCP_AUTH_TOKEN=$(openssl rand -hex 32) java -jar microsoft-defender-mcp-0.3.0-all.jar --http --port 3074
+DEFENDER_MCP_AUTH_TOKEN=$(openssl rand -hex 32) java -jar microsoft-defender-mcp-0.4.0-all.jar --http --port 3074
 ```
 
 Streamable HTTP is served at `/mcp` and the legacy HTTP+SSE transport at `/sse`.

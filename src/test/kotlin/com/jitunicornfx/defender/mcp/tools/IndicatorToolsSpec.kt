@@ -17,7 +17,7 @@ import io.kotest.property.Arb
 import io.kotest.property.arbitrary.int
 import io.kotest.property.arbitrary.list
 import io.kotest.property.arbitrary.string
-import io.kotest.property.arbitrary.stringPattern
+import io.kotest.property.arbitrary.pattern
 import io.kotest.property.checkAll
 import io.ktor.http.HttpMethod
 import kotlinx.serialization.json.jsonObject
@@ -101,8 +101,8 @@ class IndicatorToolsSpec : FunSpec({
         }
 
         test("property: random valid domains are lowercased into the path") {
-            val label = Arb.stringPattern("[a-zA-Z][a-zA-Z0-9]{0,10}")
-            checkAll(50, Arb.list(label, 1..3), Arb.stringPattern("[a-zA-Z]{2,6}")) { labels, tld ->
+            val label = Arb.pattern("[a-zA-Z][a-zA-Z0-9]{0,10}")
+            checkAll(50, Arb.list(label, 1..3), Arb.pattern("[a-zA-Z]{2,6}")) { labels, tld ->
                 val domain = (labels + tld).joinToString(".")
                 val h = indicatorHarness()
                 h.callOk(IndicatorTools.getDomainAlerts, "domain" to domain)
@@ -111,7 +111,7 @@ class IndicatorToolsSpec : FunSpec({
         }
 
         test("property: values with path or query metacharacters never reach the API") {
-            val meta = Arb.stringPattern("[a-z]{1,5}[/?#%\\\\ ;&=][a-z./]{0,8}")
+            val meta = Arb.pattern("[a-z]{1,5}[/?#%\\\\ ;&=][a-z./]{0,8}")
             checkAll(60, meta) { v ->
                 val h = indicatorHarness()
                 h.call(IndicatorTools.getDomainMachines, "domain" to "$v.com").failed shouldBe true

@@ -9,6 +9,8 @@ import com.jitunicornfx.defender.mcp.testutil.mcpHarness
 import com.jitunicornfx.defender.mcp.testutil.testConfig
 import com.jitunicornfx.defender.mcp.testutil.text
 import com.jitunicornfx.defender.mcp.tools.AlertFileTools
+import com.jitunicornfx.defender.mcp.tools.CustomIndicatorTools
+import com.jitunicornfx.defender.mcp.tools.FileCollectionTools
 import com.jitunicornfx.defender.mcp.tools.HuntingTools
 import com.jitunicornfx.defender.mcp.tools.IndicatorTools
 import com.jitunicornfx.defender.mcp.tools.InvestigationTools
@@ -53,7 +55,8 @@ class ToolRegistrySpec : FunSpec({
         test("is the concatenation of every tool group, in a stable order") {
             names(tools) shouldContainExactly names(
                 HuntingTools.all + InvestigationTools.all + MachineTools.all + IndicatorTools.all +
-                    RemediationTools.all + UserTools.all + TriageTools.all + ResponseTools.all + AlertFileTools.all,
+                    RemediationTools.all + UserTools.all + TriageTools.all + ResponseTools.all + AlertFileTools.all +
+                    CustomIndicatorTools.all + FileCollectionTools.all,
             )
         }
 
@@ -87,7 +90,7 @@ class ToolRegistrySpec : FunSpec({
                 "defender_get_machine_vulnerabilities", "defender_get_machine_recommendations", "defender_get_machine_missing_kbs",
                 "defender_get_domain_alerts", "defender_get_domain_machines", "defender_get_ip_alerts",
                 "defender_get_remediation_task_machines", "defender_get_user_alerts", "defender_get_user_machines",
-                "defender_list_alerts", "defender_get_device_av_health",
+                "defender_list_alerts", "defender_get_device_av_health", "defender_list_indicators",
             )
             // Cursor-only collections: they take top and page_token but expose no OData skip parameter.
             val topWithoutSkip = setOf("defender_get_device_av_health")

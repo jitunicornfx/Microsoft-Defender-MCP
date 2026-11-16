@@ -23,8 +23,8 @@ Base URL for everything below: `https://api.security.microsoft.com`. Regional ho
 | `POST /api/machines/{id}/StopAndQuarantineFile` `{Comment*, Sha1*}` (PascalCase path) | Kills the file's processes and removes the file | `defender_stop_and_quarantine_file` | **DESTRUCTIVE**: removes a file, and no API can restore it | y | Machine.StopAndQuarantine (or Machine.ReadWrite.All) | SHA-1 only. Win10 1703+ or Win11. Refused for Microsoft-signed or trusted-publisher files. AV must be at least passive. |
 | `POST /api/machineactions/{id}/cancel` `{Comment}` | Cancels a pending or in-progress action | `defender_cancel_machine_action` | **WRITE**: only stops actions that have not finished, and it makes no change to the device | y | Any one Machine.* action permission (the mapping is undocumented) | **Preview.** 404 if the action is unknown. Cannot undo an action that already finished. |
 | `POST /api/machines/{id}/offboard` | Stops the sensor, so EDR goes blind | n/a | **EXCLUDE** (see section 3) | n/a | Machine.Offboard | Cannot be reversed through the API. |
-| `POST /api/machines/{id}/runliveresponse` | PutFile, RunScript or GetFile on the endpoint | n/a | **EXCLUDE** for now (see section 3) | n/a | Machine.LiveResponse | **Preview**. 10/min, 50 concurrent sessions. |
-| `GET /api/machineactions/{id}/GetLiveResponseResultDownloadLink(index={n})` | SAS link to a live response result | n/a | **DEFER**: only useful together with live response | n/a | Machine.ReadWrite.All | **Preview**. Link valid 30 minutes. |
+| `POST /api/machines/{id}/runliveresponse` | PutFile, RunScript or GetFile on the endpoint | `defender_collect_file` | **IMPLEMENTED for GetFile only (DESTRUCTIVE)**. PutFile and RunScript stay excluded | y | Machine.LiveResponse | **Preview**. 10/min, 50 concurrent sessions |
+| `GET /api/machineactions/{id}/GetLiveResponseResultDownloadLink(index={n})` | SAS link to a live response result | `defender_get_collected_file_link` | **IMPLEMENTED (WRITE + approval)**, only for single-GetFile actions on non-sensitive paths | y | Machine.ReadWrite.All | **Preview**. Link valid 30 minutes |
 | `GET /api/libraryfiles` | Lists live response library files | `defender_list_library_files` (optional) | **READ_ONLY** but **DEFER**: it needs the Library.Manage scope, which also grants write | n | Library.Manage | **Preview** |
 | `POST /api/libraryfiles` (multipart, 20 MB max), `DELETE /api/libraryfiles/{fileName}` | Upload, overwrite or delete library scripts | n/a | **EXCLUDE**: a supply-chain risk, because uploaded scripts can run on any device | n/a | Library.Manage | **Preview** |
 
@@ -93,7 +93,7 @@ Base URL for everything below: `https://api.security.microsoft.com`. Regional ho
 ## 3. Exclude or defer
 
 - **Offboard (`POST /api/machines/{id}/offboard`): EXCLUDE.** It blinds EDR on the device, cannot be reversed through the API (the device must be onboarded again), and offers an attacker an easy way to remove visibility. If the user ever wants it, add it behind a separate build or config flag at DESTRUCTIVE with a 1-per-day cap.
-- **Live response (`runliveresponse`, `GetLiveResponseResultDownloadLink`) and library upload or delete: EXCLUDE.** In effect this is arbitrary code execution on endpoints, plus file push and pull. The APIs are preview, script side effects cannot be undone, and library upload is a tenant-wide supply-chain surface. A narrow future option: a **GetFile-only** live response tool at DESTRUCTIVE, with a path allow-list and no PutFile or RunScript.
+- **Live response script execution (PutFile, RunScript) and library upload or delete: EXCLUDE.** In effect this is arbitrary code execution on endpoints. GetFile alone **is implemented** as `defender_collect_file`: DESTRUCTIVE, with canonical-path validation and a credential-store deny-list.
 - **Indicator import and BatchDelete: DEFER.** Bulk scope of up to 500 per call, partial-failure and rollback semantics are unclear, and single submit or delete covers interactive analyst use.
 - **Alert batchUpdate and CreateAlertByReference: phase 3 at the earliest.** Bulk changes and automatic AIR respectively.
 - **Incidents (`/api/incidents`): DEFER, use Graph instead.** This is the Defender XDR API with a preview banner, and Microsoft steers callers to Graph `/security/incidents`. Do the same for cross-product alerts (Graph `alerts_v2`, SecurityAlert.ReadWrite.All). The MDE alert endpoints are GA and not deprecated, so they are fine for now.
@@ -114,7 +114,7 @@ Base URL for everything below: `https://api.security.microsoft.com`. Regional ho
 - Per-device software, vulnerabilities, recommendations and missing KBs are covered. The org-level equivalents in 1e are the gap.
 
 **Tier inconsistencies worth reconsidering:**
-- `get_investigation_package_uri` is DESTRUCTIVE, but the API call itself is read-only. Its sensitivity comes from the forensic SAS URL it returns. Keeping it gated is defensible; just document why.
+- `get_investigation_package_uri` was moved from DESTRUCTIVE to **WRITE**: the API call only reads. It keeps `confirm` (human approval) and the read-only hint, because the SAS URL it returns is a bearer credential for forensic data.
 - `collect_investigation_package` is DESTRUCTIVE but does not disrupt the device. It is forensic, so the current tier is acceptable.
 
 **Naming collision:** `defender_indicator_lookup` (an IP, domain or file reputation composite) is not IoC management. Name the new tools `defender_list_indicators`, `defender_submit_indicator` and `defender_delete_indicator`, and say "custom IoC" in the descriptions so the model does not confuse them.
@@ -146,7 +146,7 @@ Base URL for everything below: `https://api.security.microsoft.com`. Regional ho
 - Optionally `update_alerts_bulk` (D, with an ID cap) and `create_alert_from_event` (D).
 - Evaluate a Graph `alerts_v2` and incidents module at the same time.
 
-**Not planned:** offboard, live response and its library, indicator import and BatchDelete, authenticated scan definitions, SAS-based exports.
+**Not planned:** offboard, live response PutFile/RunScript and its library, indicator import and BatchDelete, authenticated scan definitions, SAS-based exports.
 
 ---
 

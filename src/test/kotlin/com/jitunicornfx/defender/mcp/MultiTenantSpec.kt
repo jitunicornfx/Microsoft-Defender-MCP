@@ -271,8 +271,21 @@ class MultiTenantSpec : FunSpec({
             val runtime = DefenderRuntime(testConfig(), client = FakeDefender().client())
             val spec = runtime.tools.first { it.name == ToolRegistry.SERVER_INFO_TOOL }
             val info = JsonCodec.compact.parseToJsonElement(invokeTool(spec, null, runtime.context, FixedApprover()).text()).jsonObject
-            info.keys shouldNotContain "tenants"
+            // The tenant list is always present (so a client can see which tenant it talks to), and the flat
+            // single-tenant fields stay alongside it.
+            val tenants = info["tenants"]!!.jsonArray
+            tenants.size shouldBe 1
+            tenants.single().jsonObject["name"]!!.jsonPrimitive.content shouldBe Config.DEFAULT_TENANT_NAME
+            tenants.single().jsonObject["apiBaseUrl"]!!.jsonPrimitive.content shouldBe "https://api.security.microsoft.com"
+            tenants.single().jsonObject["accessLevel"]!!.jsonPrimitive.content shouldBe "read_only"
+            info["defaultTenant"] shouldBe JsonNull
+            info["tenantArgument"]!!.jsonPrimitive.content shouldBe "not needed: this server has one tenant"
+            info["cloud"]!!.jsonPrimitive.content shouldBe "commercial"
+            info["region"]!!.jsonPrimitive.content shouldBe "global"
             info["apiBaseUrl"]!!.jsonPrimitive.content shouldBe "https://api.security.microsoft.com"
+            info["huntingApi"]!!.jsonPrimitive.content shouldStartWith "https://graph.microsoft.com"
+            // The tool schemas take no tenant argument with a single tenant.
+            runtime.tools.none { "tenant" in it.argNames } shouldBe true
             runtime.close()
         }
     }

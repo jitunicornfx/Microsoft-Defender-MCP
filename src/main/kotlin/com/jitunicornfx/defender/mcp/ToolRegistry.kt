@@ -1,6 +1,8 @@
 package com.jitunicornfx.defender.mcp
 
 import com.jitunicornfx.defender.mcp.tools.AlertFileTools
+import com.jitunicornfx.defender.mcp.tools.CustomIndicatorTools
+import com.jitunicornfx.defender.mcp.tools.FileCollectionTools
 import com.jitunicornfx.defender.mcp.tools.HuntingTools
 import com.jitunicornfx.defender.mcp.tools.IndicatorTools
 import com.jitunicornfx.defender.mcp.tools.InvestigationTools
@@ -22,7 +24,7 @@ object ToolRegistry {
     /** Every API tool, in a stable order. */
     val apiTools: List<ToolSpec> by lazy {
         HuntingTools.all + InvestigationTools.all + MachineTools.all + IndicatorTools.all +
-            RemediationTools.all + UserTools.all + TriageTools.all + ResponseTools.all + AlertFileTools.all
+            RemediationTools.all + UserTools.all + TriageTools.all + ResponseTools.all + AlertFileTools.all + CustomIndicatorTools.all + FileCollectionTools.all
     }
 
     /** Translate a `*`/`?` glob into an anchored, case-insensitive regex. */
@@ -74,16 +76,22 @@ object ToolRegistry {
                 "accessLevel" to JsonPrimitive(config.accessFor(t).name.lowercase()),
             ),
         )
+        // Always listed, so a client can see which tenant (and access level) it is talking to even with one.
+        val tenantsInfo: Map<String, JsonElement> = mapOf(
+            "tenants" to JsonArray(config.tenants.map(::tenantInfo)),
+            "defaultTenant" to (config.defaultTenant?.let(::JsonPrimitive) ?: JsonNull),
+            "tenantArgument" to JsonPrimitive(
+                when {
+                    !config.isMultiTenant -> "not needed: this server has one tenant"
+                    config.defaultTenant == null -> "required on every tool"
+                    else -> "optional; defaults to ${config.defaultTenant}"
+                },
+            ),
+        )
         val location: Map<String, JsonElement> = if (config.isMultiTenant) {
-            mapOf(
-                "tenants" to JsonArray(config.tenants.map(::tenantInfo)),
-                "defaultTenant" to (config.defaultTenant?.let(::JsonPrimitive) ?: JsonNull),
-                "tenantArgument" to JsonPrimitive(
-                    if (config.defaultTenant == null) "required on every tool" else "optional; defaults to ${config.defaultTenant}",
-                ),
-            )
+            tenantsInfo
         } else {
-            mapOf(
+            tenantsInfo + mapOf(
                 "cloud" to JsonPrimitive(config.cloud.code),
                 "region" to JsonPrimitive(config.region?.code ?: "global"),
                 "apiBaseUrl" to JsonPrimitive(config.apiBaseUrl),

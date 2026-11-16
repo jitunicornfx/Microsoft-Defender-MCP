@@ -37,7 +37,10 @@ Examples are a process command line, a scheduled-task name or a device name.
 | Containment needs a substantive comment. Files signed by Microsoft (matched against exact signer names with a valid certificate) are never quarantined | `ResponseTools` |
 | The audit line for each decision records the Defender facts the approver was shown, and whether the action was containment | `ActionGate` |
 | Undoing containment (unisolate, unrestrict) sits at the lower write tier, so recovery is never locked behind the destructive level. It still needs approval, because an attacker could try to release a contained device | `ResponseTools` |
-| Offboarding and live response (running scripts on endpoints) are not implemented at all | — |
+| Custom indicators are tiered by effect: Audit/Warn at write; Block, BlockAndRemediate and Allowed (which suppresses detections) at destructive, checked at call time. An expiration is required and capped. Critical Microsoft domains cannot be blocked. The approver is told whether an existing indicator would be overwritten, and if that check fails nothing is submitted | `CustomIndicatorTools` |
+| File collection uses live response **GetFile only**. The server never builds PutFile or RunScript commands, so it cannot run code on endpoints. Paths must be absolute with no wildcards or traversal, and credential stores are refused. The device is shown to the approver first (failing closed), and protected devices are refused | `FileCollectionTools` |
+| Download links (investigation packages, collected files) are bearer credentials. The calls change nothing, so they are write-tier, but every reveal needs approval | `InvestigationTools`, `FileCollectionTools` |
+| Offboarding, running scripts on endpoints, and live-response library uploads are not implemented at all | — |
 | Tool globs can only narrow the tool set. They can never expose a tool above the access level | `ToolRegistry.select` |
 
 ### 3. Malicious tool arguments

@@ -9,7 +9,7 @@ plugins {
 }
 
 group = "com.jitunicornfx.defender"
-version = "0.3.0"
+version = "0.4.0"
 
 dependencies {
     implementation(platform(libs.ktor.bom))

@@ -35,7 +35,7 @@ import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.string.shouldNotContain
 import io.kotest.property.Arb
 import io.kotest.property.arbitrary.int
-import io.kotest.property.arbitrary.stringPattern
+import io.kotest.property.arbitrary.pattern
 import io.kotest.property.checkAll
 import io.ktor.http.HttpMethod
 import io.ktor.http.HttpStatusCode
@@ -83,7 +83,8 @@ class InvestigationToolsSpec : FunSpec({
                 definition().annotations?.destructiveHint shouldBe false
             }
             with(InvestigationTools.getInvestigationPackageUri) {
-                access shouldBe AccessLevel.DESTRUCTIVE
+                // It changes nothing, so it is write-tier; the link is still a bearer credential, so it stays approved.
+                access shouldBe AccessLevel.WRITE
                 confirm shouldBe true
                 readOnly shouldBe true
                 description shouldContain "bearer"
@@ -291,7 +292,7 @@ class InvestigationToolsSpec : FunSpec({
         }
 
         test("property: any valid state word yields exactly one quoted state clause") {
-            checkAll(50, Arb.stringPattern("[A-Za-z]{1,40}")) { s ->
+            checkAll(50, Arb.pattern("[A-Za-z]{1,40}")) { s ->
                 val h = harness()
                 h.call(tool, "state" to s).failed shouldBe false
                 h.params["\$filter"] shouldBe "state eq '$s'"

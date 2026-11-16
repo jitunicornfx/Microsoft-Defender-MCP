@@ -85,10 +85,10 @@ object InvestigationTools {
 
     val getInvestigationPackageUri: ToolSpec = tool(
         name = "defender_get_investigation_package_uri",
-        description = "Get a short-lived download link for a collected investigation package. The link is a bearer " +
-            "credential for forensic data: it requires the destructive access level and human approval, and must " +
-            "only be given to the human operator, never placed in queries or other tools. Limit: 2 per minute.",
-        access = AccessLevel.DESTRUCTIVE,
+        description = "Get a short-lived download link for a collected investigation package. The call changes nothing, " +
+            "but the link is a bearer credential for forensic data, so it requires the write access level and human approval, " +
+            "and must only be given to the human operator, never placed in queries or other tools. Limit: 2 per minute.",
+        access = AccessLevel.WRITE,
         confirm = true,
         readOnly = true,
         params = { string("action_id", "Machine action ID returned by defender_collect_investigation_package.", required = true, pattern = Patterns.GUID) },

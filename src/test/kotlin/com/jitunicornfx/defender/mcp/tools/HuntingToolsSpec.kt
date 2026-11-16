@@ -29,7 +29,7 @@ import io.kotest.matchers.string.shouldStartWith
 import io.kotest.property.Arb
 import io.kotest.property.arbitrary.element
 import io.kotest.property.arbitrary.int
-import io.kotest.property.arbitrary.stringPattern
+import io.kotest.property.arbitrary.pattern
 import io.kotest.property.checkAll
 import io.ktor.http.HttpMethod
 import io.ktor.http.HttpStatusCode
@@ -229,7 +229,7 @@ class HuntingToolsSpec : FunSpec({
 
         test("property: denied operators are refused whatever their case or spacing") {
             val ops = Arb.element("externaldata", "http_request", "cluster", "database", "workspace", "app", "adx", "arg", "http_request_post", "external_table")
-            val spaces = Arb.stringPattern("[ \t]{0,3}")
+            val spaces = Arb.pattern("[ \t]{0,3}")
             checkAll(60, ops, spaces, Arb.int(0, 1)) { op, ws, upper ->
                 val fake = FakeDefender()
                 val word = if (upper == 1) op.uppercase() else op
@@ -240,7 +240,7 @@ class HuntingToolsSpec : FunSpec({
         }
 
         test("property: harmless queries are forwarded verbatim (trimmed)") {
-            checkAll(40, Arb.stringPattern("Device[A-Z][a-z]{2,8} \\| take [1-9][0-9]{0,2}")) { q ->
+            checkAll(40, Arb.pattern("Device[A-Z][a-z]{2,8} \\| take [1-9][0-9]{0,2}")) { q ->
                 val fake = FakeDefender(api = { Canned(body = rows(1)) })
                 ToolHarness(fake = fake).call(tool, "query" to " $q ").failed shouldBe false
                 fake.last.bodyJson().jsonObject["Query"]!!.jsonPrimitive.content shouldBe q

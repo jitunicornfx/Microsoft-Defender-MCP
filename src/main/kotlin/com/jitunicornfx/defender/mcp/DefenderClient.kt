@@ -29,7 +29,7 @@ import java.net.URI
 enum class Upstream { DEFENDER, GRAPH }
 
 /** Rate-limit pool a Defender request draws from. */
-enum class RateBucket { DEFAULT, HUNTING, PACKAGE_URI }
+enum class RateBucket { DEFAULT, HUNTING, PACKAGE_URI, LIVE_RESPONSE }
 
 /**
  * HTTP client for the Defender for Endpoint API (and Microsoft Graph for hunting).
@@ -99,6 +99,8 @@ class DefenderClient(
         RateBucket.DEFAULT to SlidingWindowRateLimiter.defenderDefault(clock, sleep),
         RateBucket.HUNTING to SlidingWindowRateLimiter.advancedHunting(clock, sleep),
         RateBucket.PACKAGE_URI to SlidingWindowRateLimiter(listOf(RateRule(2, 60_000), RateRule(120, 3_600_000)), clock, sleep),
+        // Live response: 10 calls per minute per tenant.
+        RateBucket.LIVE_RESPONSE to SlidingWindowRateLimiter(listOf(RateRule(10, 60_000)), clock, sleep),
     )
 
     private fun baseUrl(upstream: Upstream) = when (upstream) {

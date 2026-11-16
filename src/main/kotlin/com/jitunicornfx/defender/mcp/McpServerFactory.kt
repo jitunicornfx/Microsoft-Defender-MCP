@@ -20,7 +20,7 @@ import kotlinx.serialization.json.JsonObject
 import java.io.IOException
 
 const val SERVER_NAME = "microsoft-defender-mcp"
-const val SERVER_VERSION = "0.3.0"
+const val SERVER_VERSION = "0.4.0"
 
 /**
  * Process-wide pieces shared by every MCP session: one API client per tenant (its own token cache,
